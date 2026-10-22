@@ -60,7 +60,7 @@ pred, seconds, _ = track_segments(Engine(model, "bf16c"), d, tasks=("camera", "w
 
 `d4rt` is the FP32 reference under the same protocol and `ours` is FastD4RT (BF16 + compile, r = 3, G = 128).
 The ADT videos used in the paper are listed in `splits/adt_39.json`; DriveTrack and PStudio use all videos of the
-official TAPVid-3D minival split. Timing: single NVIDIA H20, PyTorch 2.6, CUDA 12.4.
+official TAPVid-3D minival split.
 
 ## Repository structure
 
