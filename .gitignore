@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+out/
+results/
+*.npy
+*.npz
+*.ckpt
+.DS_Store
