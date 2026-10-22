@@ -28,9 +28,6 @@ export OPEND4RT_ROOT=/path/to/Open-d4rt
 CKPT=$OPEND4RT_ROOT/checkpoints/OpenD4RT_48CLIP_9Mix_NoCropAUG   # 48-frame model (model.yaml + opend4rt.ckpt)
 ```
 
-Data: TAPVid-3D (`.npz` release with `queries_xyt`), MPI Sintel (training images + depth/camera data) and the Bonn
-RGB-D dynamic dataset.
-
 ## Usage
 
 ```python
