@@ -1,4 +1,3 @@
-"""Umeyama alignment (Sim(3) or rigid) for torch and numpy."""
 from __future__ import annotations
 
 import numpy as np
@@ -6,7 +5,6 @@ import torch
 
 
 def umeyama(src: torch.Tensor, dst: torch.Tensor, with_scale: bool = True):
-    """(s, R, t) minimising ||s R src + t - dst||^2 for point sets [n, 3] (Umeyama, 1991)."""
     mu_s, mu_d = src.mean(0), dst.mean(0)
     xs, xd = src - mu_s, dst - mu_d
     cov = xd.T @ xs / len(src)
@@ -33,7 +31,6 @@ def umeyama_np(src: np.ndarray, dst: np.ndarray, with_scale: bool = True):
 
 
 def compose(a, b):
-    """Sim(3) composition a o b, each given as (s, R, t)."""
     sa, Ra, ta = a
     sb, Rb, tb = b
     return sa * sb, Ra @ Rb, sa * (Ra @ tb) + ta

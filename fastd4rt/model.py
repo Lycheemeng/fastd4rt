@@ -1,8 +1,3 @@
-"""Loading a D4RT checkpoint.
-
-FastD4RT does not ship model code or weights. It uses the model definition and checkpoints of the community
-OpenD4RT release, which must be installed separately. Point ``OPEND4RT_ROOT`` to its repository root.
-"""
 from __future__ import annotations
 
 import os
@@ -38,7 +33,6 @@ def _state_dict(payload):
 
 
 def load_model(ckpt_dir: str | Path, device: str = "cuda") -> torch.nn.Module:
-    """Build the D4RT model from ``ckpt_dir/model.yaml`` and load ``ckpt_dir/opend4rt.ckpt`` (frozen, eval mode)."""
     _opend4rt_root()
     from src.core import load_checkpoint, load_yaml_config, seed_everything
     from src.model import build_model
@@ -55,7 +49,6 @@ def load_model(ckpt_dir: str | Path, device: str = "cuda") -> torch.nn.Module:
 
 
 def sinusoidal_position_embedding(length: int, dim: int, device) -> torch.Tensor:
-    """Position embedding used by the D4RT encoder (imported from the model code)."""
     _opend4rt_root()
     from src.model.utils import sinusoidal_position_embedding as spe
     return spe(length, dim, device)

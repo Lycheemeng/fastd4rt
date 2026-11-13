@@ -1,4 +1,3 @@
-"""Point cloud (Sintel) and video depth (Sintel, Bonn), paper Tab. 5."""
 from pathlib import Path
 
 import numpy as np
@@ -42,7 +41,6 @@ with torch.inference_mode():
             print(seq, T, cname, {t: {k: round(v, 4) for k, v in x.items()} for t, x in res.items() if isinstance(x, dict)}, flush=True)
         rows.append(row)
         save(rows, args.out)
-# CUT3R aggregates depth metrics weighted by the number of valid pixels
 for c in rows[0]["configs"]:
     w = np.array([r["configs"][c]["depth"]["valid_pixels"] for r in rows], float)
     s = {k: np.average([r["configs"][c]["depth"][k] for r in rows], weights=w) for k in ("AbsRel_S", "AbsRel_SS")}

@@ -1,11 +1,3 @@
-"""Evaluation metrics.
-
-tracking_camera : official TAPVid-3D AJ / APD3D / OA (median scaling)
-tracking_world  : APD3D / L1 in the camera of frame 0 after one global median-norm scale
-depth           : AbsRel with per-video scale (S) / scale-and-shift (SS), following the CUT3R evaluation code
-pointcloud_l1   : mean-shifted, scale-normalized point-cloud L1
-camera_pose     : ATE / RPE-T / RPE-R after Sim(3) alignment, following the evo-based CUT3R evaluation
-"""
 from __future__ import annotations
 
 import numpy as np
@@ -18,7 +10,6 @@ WORLD_THRESHOLDS = (0.1, 0.3, 0.5, 1.0)
 
 
 def tracking_camera(gt, vis, pred, intr):
-    """gt [N,T,3], vis [N,T] bool, pred [N,T,4] (xyz + visibility probability), intr fx,fy,cx,cy."""
     raw = tapvid3d.compute_tapvid3d_metrics(
         gt_occluded=~vis, gt_tracks=gt, pred_occluded=~(pred[..., 3] >= .5), pred_tracks=pred[..., :3],
         intrinsics_params=intr, scaling="median", use_fixed_metric_threshold=False, order="n t")
@@ -27,7 +18,6 @@ def tracking_camera(gt, vis, pred, intr):
 
 
 def tracking_world(gt, pred):
-    """All annotated frames (including occluded ones); one global scale = median |gt| / median |pred|."""
     g, p = gt.reshape(-1, 3), pred[..., :3].reshape(-1, 3)
     ok = np.isfinite(g).all(1) & np.isfinite(p).all(1)
     s = np.median(np.linalg.norm(g[ok], axis=1)) / max(np.median(np.linalg.norm(p[ok], axis=1)), 1e-12)
@@ -36,7 +26,6 @@ def tracking_world(gt, pred):
                 L1=float(np.abs(p[ok] * s - g[ok]).sum(1).mean()))
 
 
-# ---------------------------------------------------------------- depth (CUT3R protocol)
 def _scale_l1(p, g, iters=10, eps=1e-6):
     s = (p * g).sum() / (p * p).sum()
     for _ in range(iters):
@@ -62,7 +51,6 @@ def _scale_shift_l1(p, g, lr=1e-4, iters=1000, tol=1e-6):
 
 
 def depth(pred, gt, max_depth=70.0, post_clip_max=None):
-    """pred, gt [T,H,W] torch. One alignment per video; returns AbsRel_S/SS, delta1 and the valid pixel count."""
     with torch.inference_mode(False), torch.enable_grad():
         pred, gt = pred.clone().double(), gt.clone().double()
         mask = (gt > 0) & (gt < max_depth) & torch.isfinite(gt) & torch.isfinite(pred)
@@ -79,10 +67,7 @@ def depth(pred, gt, max_depth=70.0, post_clip_max=None):
     return out
 
 
-# ---------------------------------------------------------------- point cloud
 def pointcloud_l1(pred_xyz, gt_depth, K, w2c, max_depth=70.0):
-    """pred_xyz [T,H,W,3] in the camera of frame 0; GT back-projected with K and moved to frame 0 with w2c.
-    Both clouds are mean-shifted and divided by their mean distance to the centroid; returns mean |dx|+|dy|+|dz|."""
     T, H, W = gt_depth.shape
     v, u = torch.meshgrid(torch.arange(H, device="cuda", dtype=torch.float64),
                           torch.arange(W, device="cuda", dtype=torch.float64), indexing="ij")
@@ -102,9 +87,7 @@ def pointcloud_l1(pred_xyz, gt_depth, K, w2c, max_depth=70.0):
     return float((p - g).abs().sum(1).mean())
 
 
-# ---------------------------------------------------------------- camera pose
 def camera_pose(est, gt):
-    """est, gt: camera-to-world [N,4,4]. Sim(3) alignment on positions, then ATE and RPE (delta 1) RMSE."""
     s, R, t = umeyama_np(est[:, :3, 3], gt[:, :3, 3])
     a = est.copy()
     a[:, :3, :3] = R @ est[:, :3, :3]

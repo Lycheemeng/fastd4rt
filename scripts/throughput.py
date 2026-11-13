@@ -1,10 +1,3 @@
-"""Tracking throughput (paper Tab. 3): maximum number of full-video 3D tracks from a 48-frame clip at a target FPS.
-
-D4RT does not specify the clip length or whether encoding is counted; we use one 48-frame clip and include encoding
-in the time budget 48 / f. Query points are uniform in [0,1]^2 (fixed seed) and start at the first frame. Runtime is
-affine in the number of tracks M, so we fit t(M) = a + b M from M in {0, 2k, 8k, 32k} (median of 3), predict M_max,
-and verify it by direct measurement, decreasing it by 3% until the target is met. At most 200k tracks are sampled.
-"""
 import json
 import time
 from pathlib import Path

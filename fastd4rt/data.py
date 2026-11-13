@@ -1,4 +1,3 @@
-"""Dataset loaders: TAPVid-3D (official npz release), Sintel and Bonn."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,7 +17,6 @@ def resize_video(video_rgb: np.ndarray, hw=MODEL_HW) -> np.ndarray:
 
 
 def to_model_video(video_rgb: np.ndarray) -> torch.Tensor:
-    """uint8 [T, H, W, 3] -> float [1, T, 3, 256, 256] on CUDA in [0, 1]."""
     return torch.from_numpy(resize_video(video_rgb)).cuda().float().permute(0, 3, 1, 2)[None] / 255.
 
 
@@ -30,12 +28,6 @@ def _decode_jpeg(b: bytes) -> np.ndarray:
 
 
 def load_tapvid3d(path: Path, max_frames: int | None = None) -> dict:
-    """TAPVid-3D sequence with official queries.
-
-    Returns video (model input), query frames ``tq`` and normalized query uv, camera-frame GT tracks [N, T, 3],
-    visibility [N, T], world-frame GT tracks expressed in the camera of frame 0 (if extrinsics are available),
-    and intrinsics rescaled to a 256 shortest side (as used by the official metric).
-    """
     with np.load(path, allow_pickle=True) as z:
         jpgs = np.asarray(z["images_jpeg_bytes"])
         xyz = np.asarray(z["tracks_XYZ"], np.float64)
@@ -49,7 +41,7 @@ def load_tapvid3d(path: Path, max_frames: int | None = None) -> dict:
     rgb = np.stack([_decode_jpeg(b) for b in jpgs[:T]])
     xyz, vis = xyz[:T], vis[:T]
     if w2c is not None:
-        w2c = w2c[:T] @ np.linalg.inv(w2c[0])          # world = camera of frame 0
+        w2c = w2c[:T] @ np.linalg.inv(w2c[0])
         c2w = np.linalg.inv(w2c)
         world = np.einsum("tij,tnj->tni", c2w[:, :3, :3], xyz) + c2w[:, None, :3, 3]
     else:
@@ -65,7 +57,6 @@ def load_tapvid3d(path: Path, max_frames: int | None = None) -> dict:
 
 
 def truncate(d: dict, Tp: int) -> dict:
-    """First Tp frames of a loaded TAPVid-3D sequence (queries from later frames are dropped)."""
     if Tp >= d["T"]:
         return d
     keep = d["tq"] < Tp
@@ -75,7 +66,6 @@ def truncate(d: dict, Tp: int) -> dict:
     return e
 
 
-# ---------------------------------------------------------------- Sintel / Bonn
 SINTEL14 = ["alley_2", "ambush_4", "ambush_5", "ambush_6", "cave_2", "cave_4", "market_2", "market_5",
             "market_6", "shaman_3", "sleeping_1", "sleeping_2", "temple_2", "temple_3"]
 BONN5 = ["balloon2", "crowd2", "crowd3", "person_tracking2", "synchronous"]
@@ -98,7 +88,6 @@ def _read_cam(p):
 
 
 def load_sintel(root: Path, seq: str) -> dict:
-    """Sintel training sequence (final pass): rgb, depth, intrinsics K, world-to-camera w2c."""
     root = Path(root)
     frames = sorted((root / "training/final" / seq).glob("frame_*.png"))
     rgb = np.stack([np.asarray(Image.open(f).convert("RGB")) for f in frames])
@@ -108,7 +97,6 @@ def load_sintel(root: Path, seq: str) -> dict:
 
 
 def load_bonn(root: Path, seq: str, start: int = 30, end: int = 140) -> dict:
-    """Bonn RGB-D split used by MonST3R / CUT3R: sorted rgb and depth lists, frames [30:140], paired by index."""
     d = Path(root) / f"rgbd_bonn_dataset/rgbd_bonn_{seq}"
     f_rgb = sorted((d / "rgb").glob("*.png"))[start:end]
     f_d = sorted((d / "depth").glob("*.png"))[start:end]

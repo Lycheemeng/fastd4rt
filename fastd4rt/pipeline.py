@@ -1,15 +1,3 @@
-"""Long-video inference for tracking, dense outputs and camera pose.
-
-Segment-based pipeline (Appendix B of D4RT): overlapping 48-frame segments with stride 24, each encoded once;
-adjacent segments registered by Sim(3) (Umeyama on the 85% most confident points of a dense overlap grid) and
-chained to the first segment. Tracks are handed over between segments through the decoded 2D position at the
-overlap frame with the highest predicted visibility (D4RT does not describe this step).
-
-Anchored windows (FastD4RT extension for long videos): m shared anchor frames (frame 0 included) in every window,
-non-overlapping blocks of consecutive frames, one Sim(3) per window directly to window 0, one hand-over per track.
-
-All functions return predictions and wall-clock seconds (CUDA-synchronised) per task.
-"""
 from __future__ import annotations
 
 import time
@@ -40,7 +28,6 @@ def segments(T: int, L: int = CLIP_LEN, stride: int = STRIDE) -> list[int]:
 
 
 def _expand(u, v, ts, tt):
-    """Cartesian product of per-query (u, v, t_src) with a list of target indices tt."""
     nq, nf = len(u), len(tt)
     tt = torch.as_tensor(tt, device=u.device)
     return (u[:, None].expand(nq, nf).reshape(-1), v[:, None].expand(nq, nf).reshape(-1),
@@ -48,7 +35,6 @@ def _expand(u, v, ts, tt):
 
 
 def _grid_sim3(eng, seg_a, seg_b, frames_a, frames_b, keep_ratio=0.85):
-    """Sim(3) mapping segment b to segment a from a grid decoded at corresponding frames (t_cam = segment start)."""
     gu, gv = grid(ALIGN_GRID)
     pts = []
     for seg, frames in ((seg_a, frames_a), (seg_b, frames_b)):
@@ -62,7 +48,6 @@ def _grid_sim3(eng, seg_a, seg_b, frames_a, frames_b, keep_ratio=0.85):
 
 
 def chained_sim3(eng, segs, starts, seg_end):
-    """Sim(3) of every segment to segment 0, chained through the overlaps (every 4th overlap frame)."""
     ident = (torch.ones((), dtype=torch.float64, device="cuda"), torch.eye(3, dtype=torch.float64, device="cuda"),
              torch.zeros(3, dtype=torch.float64, device="cuda"))
     sim3 = {0: ident}
@@ -78,9 +63,7 @@ def _apply(sim, xyz):
     return (s * xyz.double() @ R.T + t).float()
 
 
-# ======================================================================= tracking (segments)
 def track_segments(eng, d, tasks=("camera", "world"), r=1):
-    """Track all official queries of sequence ``d`` with chained segments; r > 1 enables temporal anchors."""
     T, n = d["T"], len(d["tq"])
     starts = segments(T)
     K = len(starts)
@@ -136,12 +119,12 @@ def track_segments(eng, d, tasks=("camera", "world"), r=1):
             if len(qi) == 0:
                 continue
             out = decode_group(task, k, qi, tq[qi] - starts[k], uvq[qi], list(range(starts[k], seg_end[k] + 1)))
-            cur, ck = out, k                                     # forward hand-over
+            cur, ck = out, k
             while ck + 1 < K:
                 h, uvh = hand_over(cur, qi, starts[ck + 1], seg_end[ck])
                 cur = decode_group(task, ck + 1, qi, h - starts[ck + 1], uvh, list(range(seg_end[ck] + 1, seg_end[ck + 1] + 1)))
                 ck += 1
-            cur, ck = out, k                                     # backward hand-over
+            cur, ck = out, k
             while ck - 1 >= 0:
                 h, uvh = hand_over(cur, qi, starts[ck], seg_end[ck - 1])
                 cur = decode_group(task, ck - 1, qi, h - starts[ck - 1], uvh, list(range(starts[ck - 1], starts[ck])))
@@ -150,9 +133,7 @@ def track_segments(eng, d, tasks=("camera", "world"), r=1):
     return {t: p.cpu().numpy().astype(np.float64) for t, p in preds.items()}, secs, dict(windows=K)
 
 
-# ======================================================================= tracking (anchored windows)
 def anchored_windows(T: int, m: int = 8, L: int = CLIP_LEN):
-    """Windows (sorted frame list, owned block) with m shared anchor frames; blocks do not overlap."""
     if T <= L:
         return [(list(range(T)), list(range(T)))], [0]
     G = sorted({int(round(i * T / m)) for i in range(m)})
@@ -165,7 +146,7 @@ def anchored_windows(T: int, m: int = 8, L: int = CLIP_LEN):
             blocks.append(block)
             block = []
     wins = [(sorted(set(G) | set(b)), b) for b in blocks]
-    if block:   # last block: fill the window with earlier frames so it still has L unique frames
+    if block:
         win = set(G) | set(block)
         for f in range(block[0] - 1, -1, -1):
             if len(win) >= L:
@@ -177,7 +158,6 @@ def anchored_windows(T: int, m: int = 8, L: int = CLIP_LEN):
 
 
 def track_anchored(eng, d, tasks=("camera", "world"), m=8, r=1):
-    """Track all official queries with anchored windows (one hand-over, Sim(3) of each window to window 0)."""
     T, n = d["T"], len(d["tq"])
     wins, G = anchored_windows(T, m)
     K = len(wins)
@@ -232,7 +212,7 @@ def track_anchored(eng, d, tasks=("camera", "world"), m=8, r=1):
             preds[task][qi[:, None], oi, 3] = vis
             if K == 1:
                 continue
-            _, gv, guv = dec(task, k, qi, src, uvq[qi], G, False)      # exact decode at the anchor frames
+            _, gv, guv = dec(task, k, qi, src, uvq[qi], G, False)
             best = gv.argmax(1)
             g_star = torch.as_tensor(G, device="cuda")[best]
             uv_g = guv[torch.arange(len(qi), device="cuda"), best]
@@ -249,7 +229,6 @@ def track_anchored(eng, d, tasks=("camera", "world"), m=8, r=1):
     return {t: p.cpu().numpy().astype(np.float64) for t, p in preds.items()}, secs, dict(windows=K)
 
 
-# ======================================================================= dense outputs and camera pose
 def _owner_segments(T):
     starts = segments(T)
     seg_end = [min(a + CLIP_LEN, T) - 1 for a in starts]
@@ -260,10 +239,6 @@ def _owner_segments(T):
 
 
 def dense(eng, video, aspect, T, G=256, tasks=("depth", "pointcloud")):
-    """Depth (u,v,t,t,t) and point cloud (u,v,t,t,segment start -> frame 0) on a G x G grid of every frame.
-
-    Returns {task: [T, G, G, 3]}; depth predictions of a segment are multiplied by its chained scale.
-    """
     starts, seg_end, owner = _owner_segments(T)
     secs = {t: 0. for t in tasks}
     t0 = sync_time()
@@ -291,8 +266,6 @@ def dense(eng, video, aspect, T, G=256, tasks=("depth", "pointcloud")):
 
 
 def camera_poses(eng, video, aspect, T, G=32):
-    """Camera-to-world poses [T, 4, 4] (world = camera of frame 0), following D4RT Sec. 3:
-    rigid Umeyama between (u,v,t,t,t) and (u,v,t,t,ref) on a G x G grid; segments mapped by the chained Sim(3)."""
     starts, seg_end, owner = _owner_segments(T)
     t0 = sync_time()
     segs = [eng.encode(video[:, a:a + CLIP_LEN], aspect) for a in starts]

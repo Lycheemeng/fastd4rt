@@ -1,5 +1,3 @@
-"""Runtime breakdown (encoder / decoder / other) for tracking (TAPVid-3D) and dense depth (Bonn).
-One warm-up, then the median of three runs per video."""
 import json
 import time
 from pathlib import Path

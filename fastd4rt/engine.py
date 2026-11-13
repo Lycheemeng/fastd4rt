@@ -1,12 +1,3 @@
-"""Execution engines for a frozen D4RT model.
-
-``fp32``  : the reference path (original modules, FP32, keys/values recomputed per query batch).
-``bf16``  : efficient execution path: bf16 autocast, fused SDPA attention reusing the original projection weights,
-            decoder keys/values computed once per segment.
-``bf16c`` : ``bf16`` + ``torch.compile`` of the encoder (the FastD4RT default).
-``fp8c``  : ``bf16c`` with W8A8 FP8 linear layers in the encoder (ablation only).
-None of the engines changes the network or its weights.
-"""
 from __future__ import annotations
 
 import torch
@@ -17,9 +8,7 @@ from .model import sinusoidal_position_embedding
 CLIP_LEN = 48
 
 
-# ---------------------------------------------------------------- attention
 def mha_sdpa(attn: torch.nn.MultiheadAttention, q_in, kv_in=None, k=None, v=None):
-    """nn.MultiheadAttention (batch_first, eval) computed with scaled_dot_product_attention."""
     d, h = attn.embed_dim, attn.num_heads
     w, b = attn.in_proj_weight, attn.in_proj_bias
     bsz, nq, _ = q_in.shape
@@ -40,7 +29,6 @@ def _block(blk, x):
 
 
 def encode_fast(model, video, aspect, blocks=None):
-    """Same function as ``model.encode_video`` with fused attention; optional replacement blocks (FP8)."""
     enc = model.encoder
     extra = model._project_aspect_ratio_token(video=video, aspect_ratio=aspect)
     x = enc._token_cap(enc.patch_embed(video.permute(0, 2, 1, 3, 4)))
@@ -61,7 +49,6 @@ def encode_fast(model, video, aspect, blocks=None):
 
 
 def decoder_kv(model, memory):
-    """Keys and values of the scene representation for every decoder block, computed once."""
     kvs = []
     for blk in model.decoder.blocks:
         attn = blk.cross_attn
@@ -73,7 +60,6 @@ def decoder_kv(model, memory):
     return kvs
 
 
-# ---------------------------------------------------------------- FP8 (ablation)
 E4M3_MAX = 448.0
 
 
@@ -84,7 +70,6 @@ def _quant_rows(x):
 
 
 class FP8Linear(torch.nn.Module):
-    """W8A8 FP8 matmul with per-output-channel weight scales and per-token activation scales."""
 
     def __init__(self, weight, bias):
         super().__init__()
@@ -123,9 +108,7 @@ class FP8Block(torch.nn.Module):
         return x + self.fc2(F.gelu(self.fc1(self.blk.norm_ff(x))))
 
 
-# ---------------------------------------------------------------- engine
 class Engine:
-    """Encode clips and decode queries with one of the execution paths above."""
 
     def __init__(self, model, kind: str = "bf16c"):
         assert kind in ("fp32", "bf16", "bf16c", "fp8c"), kind
@@ -144,10 +127,9 @@ class Engine:
         return torch.autocast("cuda", dtype=torch.bfloat16)
 
     def encode(self, clip, aspect):
-        """Encode a clip [1, T, 3, H, W] (end-padded to the clip length). Returns an opaque segment state."""
         if clip.shape[1] < CLIP_LEN:
             clip = torch.cat([clip, clip[:, -1:].expand(-1, CLIP_LEN - clip.shape[1], -1, -1, -1)], 1)
-        clip = clip.clone(memory_format=torch.contiguous_format)   # fixed strides: no recompilation
+        clip = clip.clone(memory_format=torch.contiguous_format)
         with self.autocast():
             if self.kind == "fp32":
                 return clip, self.model.encode_video(video=clip, aspect_ratio=aspect), None
@@ -155,11 +137,10 @@ class Engine:
             return clip, mem, decoder_kv(self.model, mem)
 
     def decode(self, seg, u, v, t_src, t_tgt, t_cam):
-        """Decode flat query vectors (torch, equal length). Returns float32 xyz [n,3], uv [n,2], vis [n], conf [n]."""
         clip, mem, kvs = seg
         m = self.model
         q = dict(u=u[None], v=v[None], t_src=t_src[None], t_tgt=t_tgt[None], t_cam=t_cam[None])
-        step = 4096 if kvs is None else 16384   # FP32: query batch of the community code
+        step = 4096 if kvs is None else 16384
         outs = []
         with self.autocast():
             for s0 in range(0, len(u), step):

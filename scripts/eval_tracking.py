@@ -1,4 +1,3 @@
-"""3D point tracking on TAPVid-3D (paper Tab. 4): camera AJ/APD3D/OA and world APD3D/L1, full-length videos."""
 from pathlib import Path
 import json
 
@@ -31,7 +30,7 @@ with torch.inference_mode():
         for cname, (eng_name, r, _) in cfgs.items():
             run = (lambda: track_anchored(engines[eng_name], d, tasks, 8, r)) if args.anchored else \
                   (lambda: track_segments(engines[eng_name], d, tasks, r))
-            if eng_name not in warmed:          # torch.compile warm-up, not timed
+            if eng_name not in warmed:
                 run()
                 warmed.add(eng_name)
             pred, secs, info = run()

@@ -1,4 +1,3 @@
-"""Camera pose on Sintel (paper Tab. 6, Sintel columns): ATE / RPE-T / RPE-R. Both methods use a 32x32 grid."""
 from pathlib import Path
 
 import numpy as np
@@ -31,5 +30,5 @@ with torch.inference_mode():
             print(seq, T, cname, {k: round(v, 4) for k, v in row["configs"][cname]["pose"].items()}, flush=True)
         rows.append(row)
         save(rows, args.out)
-from _common import summarize  # noqa: E402
+from _common import summarize
 summarize(rows, {"pose": ["ATE", "RPE_t", "RPE_r"]})

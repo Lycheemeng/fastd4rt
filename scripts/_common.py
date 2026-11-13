@@ -7,9 +7,9 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fastd4rt.configs import CONFIGS  # noqa: E402
-from fastd4rt.engine import Engine  # noqa: E402
-from fastd4rt.model import load_model  # noqa: E402
+from fastd4rt.configs import CONFIGS
+from fastd4rt.engine import Engine
+from fastd4rt.model import load_model
 
 SPLITS = Path(__file__).resolve().parents[1] / "splits"
 
@@ -23,7 +23,7 @@ def parser(desc):
 
 
 def setup(args):
-    torch.backends.cuda.matmul.allow_tf32 = False   # the reference runs in plain FP32, as the community code
+    torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     model = load_model(args.ckpt)
     cfgs = {c: CONFIGS[c] for c in args.configs.split(",")}
@@ -37,7 +37,6 @@ def save(rows, out):
 
 
 def summarize(rows, task_keys, ref="d4rt"):
-    """Video-mean metrics; speed-up = mean reference time / mean time."""
     print(f"\n{len(rows)} videos")
     for task, keys in task_keys.items():
         if task not in rows[0]["configs"][next(iter(rows[0]["configs"]))]:
